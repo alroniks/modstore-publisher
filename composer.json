@@ -22,7 +22,7 @@
     },
     "autoload": {
         "psr-4": {
-            "alroniks\\publisher\\": "src"
+            "Alroniks\\Publisher\\": "src"
         }
     }
 }
