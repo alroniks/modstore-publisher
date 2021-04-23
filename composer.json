@@ -1,6 +1,6 @@
 {
     "name": "alroniks/modstore-publisher",
-    "bin": ["bin/mspub"],
+    "bin": ["bin/publisher"],
     "description": "PHP CLI tool for publishing zipped MODX extras on modstore.pro marketplace.",
     "type": "project",
     "license": "MIT",

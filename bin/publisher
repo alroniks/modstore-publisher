@@ -8,18 +8,20 @@
 
 declare(strict_types = 1);
 
-use Alroniks\Publisher\Command\PublishCommand;
-use Symfony\Component\Console\Application;
-
 if (PHP_SAPI !== 'cli') {
     echo 'Warning: Publisher should be invoked via the CLI version of PHP, not the ' . PHP_SAPI . ' SAPI' . PHP_EOL;
 }
+
+use Alroniks\Publisher\Command\PublishCommand;
+use Symfony\Component\Console\Application;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 setlocale(LC_ALL, 'C');
 error_reporting(-1);
-putenv('MSPUB_BINARY=' . realpath($_SERVER['argv'][0]));
+@ini_set('display_errors', '1');
+
+putenv('PUBLISHER_BINARY=' . realpath($_SERVER['argv'][0]));
 
 $application = new Application('publish');
 
