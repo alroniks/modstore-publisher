@@ -12,29 +12,11 @@ $client = new Client([
 
 $opts = [
     'form_params' => [
-        'email' => 'ivan@klimchuk.com',
-        'password' => 'Alro1788!1$$$',
+        'email' => '***',
+        'password' => '***',
         'action' => 'office/login'
     ]
 ];
-
-function get_meta_tags_from_string($html) {
-    $doc = new DOMDocument();
-    libxml_use_internal_errors(true);
-    echo strlen($html);
-    $doc->loadHTML($html);
-    libxml_clear_errors();
-
-    $xpath = new DOMXPath($doc);
-    $nodes = $xpath->query('//head/meta[@name]');
-    $meta = [];
-
-    foreach($nodes as $node) {
-        $meta[$node->getAttribute('name')] = $node->getAttribute('content');
-    }
-
-    return $meta;
-}
 
 try {
     $response = $client->request('POST', 'assets/components/extras/action.php', $opts);
@@ -43,7 +25,7 @@ try {
 
         $data = json_decode($response->getBody(), true);
 
-        $page = $client->request('GET', 'office/packages/mspoplati');
+        $page = $client->request('GET', 'office/packages/***');
 
         $str = $page->getBody()->getContents();
 
@@ -65,7 +47,7 @@ try {
                 ],
                 [
                     'name' => 'package_id',
-                    'contents' => 542
+                    'contents' => 9
                 ],
                 [
                     'name' => 'changelog',
@@ -93,7 +75,7 @@ try {
                 ],
                 [
                     'name'     => 'package',
-                    'contents' => Psr7\Utils::tryFopen(__DIR__ . '/mspoplati-0.4.0-dev.transport.zip', 'r')
+                    'contents' => Psr7\Utils::tryFopen(__DIR__ . '/*.transport.zip', 'r')
                 ]
             ],
             'headers' => [
@@ -110,7 +92,6 @@ try {
 } catch (Exception $ex) {
     echo $ex->getMessage(), PHP_EOL;
     print_r(json_decode($ex->getResponse()->getBody()->getContents(), true));
-//    print_r($ex);
 }
 
 
