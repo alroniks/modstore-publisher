@@ -1,28 +1,30 @@
 {
-    "name": "alroniks/modstore-publisher",
-    "bin": ["bin/publisher"],
-    "description": "PHP CLI tool for publishing zipped MODX extras on modstore.pro marketplace.",
-    "type": "project",
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Ivan Klimchuk",
-            "email": "ivan@klimchuk.com"
-        }
-    ],
-    "minimum-stability": "stable",
-    "require": {
-        "php": ">=7.4",
-        "ext-json": "*",
-        "guzzlehttp/guzzle": "^7.3",
-        "symfony/console": "^5.2"
-    },
-    "require-dev": {
-        "roave/security-advisories": "dev-latest"
-    },
-    "autoload": {
-        "psr-4": {
-            "Alroniks\\Publisher\\": "src"
-        }
+  "name": "alroniks/modstore-publisher",
+  "bin": [
+    "bin/publisher"
+  ],
+  "description": "PHP CLI tool for publishing zipped MODX extras on modstore.pro marketplace.",
+  "type": "project",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Ivan Klimchuk",
+      "email": "ivan@klimchuk.com"
     }
+  ],
+  "minimum-stability": "stable",
+  "require": {
+    "php": ">=7.4",
+    "ext-json": "*",
+    "guzzlehttp/guzzle": "^7.3",
+    "symfony/console": "^5.2"
+  },
+  "require-dev": {
+    "roave/security-advisories": "dev-latest"
+  },
+  "autoload": {
+    "psr-4": {
+      "Alroniks\\Publisher\\": "src"
+    }
+  }
 }
