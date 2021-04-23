@@ -1,5 +1,6 @@
 {
     "name": "alroniks/modstore-publisher",
+    "bin": ["bin/mspub"],
     "description": "PHP CLI tool for publishing zipped MODX extras on modstore.pro marketplace.",
     "type": "project",
     "license": "MIT",
@@ -11,11 +12,16 @@
     ],
     "minimum-stability": "stable",
     "require": {
-        "guzzlehttp/guzzle": "7.4.x-dev",
-        "guzzlehttp/psr7": "2.0.x-dev",
-        "ext-json": "*"
+        "php": ">=7.4",
+        "ext-json": "*",
+        "guzzlehttp/guzzle": "^7.3"
     },
     "require-dev": {
         "roave/security-advisories": "dev-latest"
+    },
+    "autoload": {
+        "psr-4": {
+            "alroniks\\publisher\\": "src"
+        }
     }
 }
