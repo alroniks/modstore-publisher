@@ -14,7 +14,8 @@
     "require": {
         "php": ">=7.4",
         "ext-json": "*",
-        "guzzlehttp/guzzle": "^7.3"
+        "guzzlehttp/guzzle": "^7.3",
+        "symfony/console": "^5.2"
     },
     "require-dev": {
         "roave/security-advisories": "dev-latest"
