@@ -92,7 +92,8 @@ final class PublishCommand extends Command
                     // versions
                     new InputOption(
                         self::OPTION_REQUIRED_MODX_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of MODX which required for running the package code.'
+                        'Minimal version of MODX which required for running the package code.',
+                        '2.8'
                     ),
                     new InputOption(
                         self::OPTION_REQUIRED_MODX_VERSION_MAX, null, InputOption::VALUE_REQUIRED,
@@ -101,7 +102,8 @@ final class PublishCommand extends Command
                     ),
                     new InputOption(
                         self::OPTION_REQUIRED_PHP_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of PHP which required for running the package code.'
+                        'Minimal version of PHP which required for running the package code.',
+                        '7.2'
                     ),
 
                     // flags
