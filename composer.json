@@ -18,7 +18,8 @@
     "php": ">=7.4",
     "ext-json": "*",
     "guzzlehttp/guzzle": "^7.3",
-    "symfony/console": "^5.2"
+    "symfony/console": "^5.2",
+    "imangazaliev/didom": "^1.16"
   },
   "require-dev": {
     "roave/security-advisories": "dev-latest"
