@@ -5,7 +5,7 @@ PHP CLI tool which allows publishing zipped MODX extra to modstore.pro marketpla
 - [x] Add symfony application and CLI component
 - [x] Add binary to easy run of tool
 - [ ] Convert existing script to the proper class (or command)
-- [ ] Make possible to configure it by params and options
+- [x] Make possible to configure it by params and options
 - [ ] Make interactive mode when no options provided
 - [ ] Write explicit documentation about usage in readme.md
 - [ ] Write a post on blog about idea and usage cases

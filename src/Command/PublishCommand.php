@@ -9,10 +9,12 @@ declare(strict_types = 1);
 
 namespace Alroniks\Publisher\Command;
 
+use Alroniks\Publisher\SignatureException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -126,30 +128,46 @@ final class PublishCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+//        $io = new SymfonyStyle($input, $output);
+
         $this->client = new Client(['base_uri' => self::CLIENT_BASE_URI, 'cookies' => true]);
 
         try {
             // 01. Attempt to login
-            $this->login($input->getOption(self::OPTION_LOGIN), $input->getOption(self::OPTION_PASSWORD));
+            $output->writeln($this->formatServiceAnswer(
+                $this->login($input->getOption(self::OPTION_LOGIN), $input->getOption(self::OPTION_PASSWORD))
+            ));
 
-            // 02. Getting the page of the package
+            // 02. Parse archive name
+            [$package, $version] = $this->parsePackage($input->getArgument(self::ARGUMENT_PACKAGE));
+
+            // 03. Override parsed name and versions, if defined
+            $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
+            $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
+
+            // 04. Getting the page of the package
             $content = $this->client
-                ->request('GET', 'office/packages/***') // get name here from the zip?
+                ->request('GET', sprintf('office/packages/%s', $package))
                 ->getBody()->getContents();
 
             $token = $this->parseToken($content);
 //            $extra = $this->parseExtra($content); // нужен только id + потом доступные версии для override
 
+            echo $token;
+
             // prepare form?
 
             // 03. Upload the compiled package
-            $answer = $this->upload([], $token, true);
+//            $answer = $this->upload([], $token, true);
 
-            $output->writeln($this->formatServiceAnswer($answer));
+//            $output->writeln($this->formatServiceAnswer($answer));
 
             return self::SUCCESS;
         } catch (GuzzleException $gex) {
             $output->writeln($this->formatServiceAnswer($gex->getResponse()));
+            return self::FAILURE;
+        } catch (SignatureException $e) {
+            $output->writeln($e->getMessage()); // make an error
             return self::FAILURE;
         }
     }
@@ -192,8 +210,30 @@ final class PublishCommand extends Command
         );
     }
 
+    private function parsePackage(string $path): array
+    {
+        $data = pathinfo($path);
+
+        if ($data['extension'] !== 'zip') {
+            throw new SignatureException('Provided file is not zip-archive.');
+        }
+
+        $pattern = '/^([a-z]+)-(\d+\.\d+\.\d+-[a-z]+)\.transport$/m';
+
+        $check = preg_match($pattern, $data['filename'], $matches);
+
+        if ($check === false) {
+            throw new RuntimeException('Impossible to match package signature by regular expression.');
+        } elseif ($check === 0) {
+            throw new SignatureException('Provided file has an incompatible package name.');
+        }
+
+        return array_values(array_filter($matches, static fn($key) => in_array($key, [1, 2], true), ARRAY_FILTER_USE_KEY));
+    }
+
     private function parseExtra(string $content): array
     {
+        // new one exception
 
     }
 
@@ -203,21 +243,11 @@ final class PublishCommand extends Command
         fwrite($tempFile, $content);
         $metatags = get_meta_tags(stream_get_meta_data($tempFile)['uri']);
 
+        // token exception
         return $metatags['csrf-token'];
     }
 
     private function uploadExtraForm(): array
-    {
-        return [
-
-            ];
-
-    }
-
-    /**
-     * @throws \GuzzleHttp\Exception\GuzzleException
-     */
-    private function upload(array $form, string $token, bool $debug = false): ResponseInterface
     {
         $form = [
             'action' => 'office/versions/create', // or update?
@@ -230,12 +260,21 @@ final class PublishCommand extends Command
             'deprecate_other' => '',
             'package' => '' // psr stream // Psr7\Utils::tryFopen(__DIR__ . '/*.transport.zip', 'r')
         ];
-//
-//        [
-//            'name'     => 'action',
-//            'contents' => 'office/versions/create'
-//        ],
 
+        return [
+            [
+            'name'     => 'action',
+            'contents' => 'office/versions/create'
+        ],
+            ];
+
+    }
+
+    /**
+     * @throws \GuzzleHttp\Exception\GuzzleException
+     */
+    private function upload(array $form, string $token, bool $debug = false): ResponseInterface
+    {
         return $this->client->request('POST', self::CLIENT_ENTRY_POINT, [
             'multipart' => $form,
             'headers' => ['X-CSRF-Token' => $token],
@@ -249,11 +288,13 @@ final class PublishCommand extends Command
     private function formatServiceAnswer(ResponseInterface $response): string
     {
         $content = $response->getBody()->getContents();
+//        var_dump($content);
+
         $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
 
         $success = (bool) ($decoded['success'] ?? false);
 
-        return sprintf('<%1$s>\n%2$s\n</%1$s>', $success ? 'info' : 'error', $decoded['message'] ?? '');
+        return sprintf("<%s>\n%s\n</>", $success ? 'info' : 'error', $decoded['message'] ?? '');
     }
 }
 
