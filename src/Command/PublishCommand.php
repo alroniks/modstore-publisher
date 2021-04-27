@@ -9,8 +9,10 @@ declare(strict_types = 1);
 
 namespace Alroniks\Publisher\Command;
 
+use Alroniks\Publisher\ExtraException;
 use Alroniks\Publisher\SignatureException;
 use Alroniks\Publisher\TokenException;
+use DiDom\Document;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
@@ -155,12 +157,22 @@ final class PublishCommand extends Command
             $token = $this->parseToken($content);
 
             // 06. Get meta information about extra
-            $extra = $this->parseExtra($content); // нужен только id + потом доступные версии для override
+            $extra = $this->parseExtra($content);
 
+            // если версии совпадают и есть опция override, то нужно обновить
+            // если опции нет - то просто добавиь
+            // или спросить вопрос, перезаписать ли?
 
-            echo $token;
+            print_r(array_column($extra['versions'], 'active'));
+            // confirm? // если режим не интерактивный - то переписывать по умолчанию
+            // add?
+
+            // ['id' => '', 'versions' = []]
+//            echo $token;
 
             // prepare form?
+
+            // перед добавление вывести все параметры будущей оперции и попросить подвердить?
 
             // 07. Upload the compiled package
 //            $answer = $this->upload([], $token, true);
@@ -171,7 +183,7 @@ final class PublishCommand extends Command
         } catch (GuzzleException $gex) {
             $output->writeln($this->formatServiceAnswer($gex->getResponse()));
             return self::FAILURE;
-        } catch (SignatureException | TokenException $e) {
+        } catch (SignatureException | TokenException | ExtraException $e) {
             $output->writeln($e->getMessage()); // make an error
             return self::FAILURE;
         }
@@ -238,17 +250,35 @@ final class PublishCommand extends Command
 
     private function parseExtra(string $content): array
     {
-        echo $content;
+        $document = new Document($content);
 
-        // confirm? // если режим не интерактивный - то переписывать по умолчанию
-        // add?
+        $input = $document->first('#office-package-form input[name="id"]');
 
-        // id=office-version-form
-        // id= office-package-form
-//        <input type="hidden" name="id" value="542">
+        if (!$input) {
+            throw new ExtraException('Element with extra ID is not found on the page.');
+        }
 
-        // id=pdopage
+        $versions = [];
+        foreach ($document->find('#pdopage tr.version') as $version) {
+            $cells = $version->find('td');
 
+            $href = $cells[4]->first('a.fa-edit')->getAttribute('href');
+            $segments = explode('/', $href);
+
+            $versions[] = [
+                'id' => (int) array_pop($segments),
+                'active' => false === strpos($version->getAttribute('class'), 'inactive'),
+                'version' => trim($cells[0]->text()),
+                'released' => trim($cells[1]->text()),
+                'downloads' => (int) trim($cells[2]->text()),
+                'updated' => trim($cells[3]->text())
+            ];
+        }
+
+        return [
+            'id' => (int) $input->getAttribute('value'),
+            'versions' => $versions
+        ];
     }
 
     private function parseToken(string $content): string
@@ -302,7 +332,8 @@ final class PublishCommand extends Command
 //            </select>
 
         $form = [
-            'action' => 'office/versions/create', // or update?
+            'action' => 'office/versions/create', // or update? office/versions/update
+            // id version
             'package_id' => 9,
             'changelog' => '',
             'changelog_en' => '',
