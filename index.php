@@ -23,7 +23,7 @@ try {
 
     if ($response->getStatusCode() === 200) {
 
-        $data = json_decode($response->getBody(), true);
+//        $data = json_decode($response->getBody(), true);
 
         $page = $client->request('GET', 'office/packages/***');
 
