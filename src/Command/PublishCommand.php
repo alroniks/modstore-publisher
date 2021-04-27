@@ -14,17 +14,17 @@ use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\Console\Command\Command;
-
-//use Symfony\Component\Console\Helper\QuestionHelper;
+use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Question\Question;
 
 final class PublishCommand extends Command
 {
     protected const CLIENT_BASE_URI = 'https://modstore.pro/';
     protected const CLIENT_ENTRY_POINT = 'assets/components/extras/action.php';
+
+    public const ARGUMENT_PACKAGE = 'package';
 
     public const OPTION_LOGIN = 'login';
     public const OPTION_PASSWORD = 'password';
@@ -39,60 +39,84 @@ final class PublishCommand extends Command
     public const OPTION_CHANGELOG = 'changelog';
     public const OPTION_CHANGELOG_ENGLISH = 'changelog-english';
 
-    public const OPTION_PACKAGE = 'package'; // make it as argument?
+    public const OPTION_PACKAGE = 'package';
+    public const OPTION_RELEASE = 'release';
 
     private Client $client;
 
     protected function configure(): void
     {
-        // login, password, path to the package? - changelog? анзипить?
-        // имя дополнения и версия берется из пакета, но можно передать параметр, который переопределит значения
-
         $this
             ->setName('publish')
-            ->setDescription('Sends new version.')
+            ->setDescription('Sends new package version.')
             ->setDefinition(
                 [
-                    new InputOption(
-                        'login', 'l', InputOption::VALUE_REQUIRED,
-                        'Email for login on modstore'
-                    ),
-                    new InputOption(
-                        'password', 'p', InputOption::VALUE_REQUIRED,
-                        'Password for login on modstore'
+                    new InputArgument(
+                        self::ARGUMENT_PACKAGE, InputArgument::REQUIRED,
+                        'Path to the archive with compiled MODX package.'
                     ),
 
-                    new InputOption('package', null, InputOption::VALUE_REQUIRED,
-                                    'Name of the extra to update'),
-
-                    // binary?
-                    new InputOption('binary', 'b', InputOption::VALUE_REQUIRED,
-                                    'Path to the zip file with a package code'), // replace by argument?
-
-                    new InputOption('php_min_version'),
-new InputOption('modx_min_version'),
-new InputOption('modx_max_version'),
-
-
+                    // credentials
                     new InputOption(
-                        'deprecate', 'd', InputOption::VALUE_NONE,
-                        'Disable old versions of the package'
+                        self::OPTION_LOGIN, 'u', InputOption::VALUE_REQUIRED,
+                        'User name (email) for login on modstore.'
+                    ),
+                    new InputOption(
+                        self::OPTION_PASSWORD, 'p', InputOption::VALUE_REQUIRED,
+                        'Password for login on modstore.'
+                    ),
+
+                    // package
+                    new InputOption(
+                        self::OPTION_PACKAGE, null, InputOption::VALUE_REQUIRED,
+                        'The name of the package. Usually, it is taken from the filename of the archive,
+                        but if defined, it will be used to fetch the package page.'
+                    ),
+                    new InputOption(
+                        self::OPTION_RELEASE, null, InputOption::VALUE_REQUIRED,
+                        'The version of the package to upload. Usually, it is taken from the filename of the archive,
+                        but if defined, it will override parsed value.'
+                    ),
+
+                    // changelog
+                    new InputOption(
+                        self::OPTION_CHANGELOG, null, InputOption::VALUE_REQUIRED,
+                        'Path to the file with changelog entries.'
+                    ),
+                    new InputOption(
+                        self::OPTION_CHANGELOG_ENGLISH, null, InputOption::VALUE_REQUIRED,
+                        'Alternative file for English variant in case, when original changelog on russian.
+                        By default one file used for both cases.'
+                    ),
+
+                    // versions
+                    new InputOption(
+                        self::OPTION_REQUIRED_MODX_VERSION, null, InputOption::VALUE_REQUIRED,
+                        'Minimal version of MODX which required for running the package code.'
+                    ),
+                    new InputOption(
+                        self::OPTION_REQUIRED_MODX_VERSION_MAX, null, InputOption::VALUE_REQUIRED,
+                        'Up to what maximum version of MODX the package code is guaranteed to work.
+                        May be useful to limit packages, which are not compatible with MODX 3.'
+                    ),
+                    new InputOption(
+                        self::OPTION_REQUIRED_PHP_VERSION, null, InputOption::VALUE_REQUIRED,
+                        'Minimal version of PHP which required for running the package code.'
+                    ),
+
+                    // flags
+                    new InputOption(
+                        self::OPTION_DEPRECATE, 'd', InputOption::VALUE_NONE,
+                        'Disable all previous versions of the package.'
+                    ),
+                    new InputOption(
+                        self::OPTION_OVERRIDE, 'r', InputOption::VALUE_NONE,
+                        'Override existing version by the new binary package.
+                        If the version does not exist, the flag will be ignored.'
                     ),
                 ]
             )
             ->setHelp('Sends and publishes new version of the package to the repository.');
-
-        // имя пакета - автоматом брать из zip?
-        // бинарник (архив)
-
-        //minimum_supports
-        //supports
-        // minimum_php
-        // deprecate_other
-
-        // интерактивный режим? нужно проверять, что опции не заданы и запрашивать
-        // нужно выключать интерактивный режим в случае использования в actions
-
     }
 
     /**
@@ -101,8 +125,6 @@ new InputOption('modx_max_version'),
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->client = new Client(['base_uri' => self::CLIENT_BASE_URI, 'cookies' => true]);
-
-        // validate fields
 
         try {
             // 01. Attempt to login
