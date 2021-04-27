@@ -1,5 +1,6 @@
 {
   "name": "alroniks/modstore-publisher",
+  "version": "0.1.0",
   "bin": [
     "bin/publisher"
   ],

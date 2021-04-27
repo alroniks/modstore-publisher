@@ -81,7 +81,7 @@ new InputOption('modx_max_version'),
                 ]
             )
             ->setHelp('Sends and publishes new version of the package to the repository.');
-        
+
         // имя пакета - автоматом брать из zip?
         // бинарник (архив)
 
