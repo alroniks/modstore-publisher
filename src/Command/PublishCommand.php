@@ -10,6 +10,7 @@ declare(strict_types = 1);
 namespace Alroniks\Publisher\Command;
 
 use Alroniks\Publisher\SignatureException;
+use Alroniks\Publisher\TokenException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use JsonException;
@@ -145,19 +146,23 @@ final class PublishCommand extends Command
             $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
             $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
 
-            // 04. Getting the page of the package
+            // 04. Get the page of the package
             $content = $this->client
                 ->request('GET', sprintf('office/packages/%s', $package))
                 ->getBody()->getContents();
 
+            // 05. Get the CSRF token
             $token = $this->parseToken($content);
-//            $extra = $this->parseExtra($content); // нужен только id + потом доступные версии для override
+
+            // 06. Get meta information about extra
+            $extra = $this->parseExtra($content); // нужен только id + потом доступные версии для override
+
 
             echo $token;
 
             // prepare form?
 
-            // 03. Upload the compiled package
+            // 07. Upload the compiled package
 //            $answer = $this->upload([], $token, true);
 
 //            $output->writeln($this->formatServiceAnswer($answer));
@@ -166,7 +171,7 @@ final class PublishCommand extends Command
         } catch (GuzzleException $gex) {
             $output->writeln($this->formatServiceAnswer($gex->getResponse()));
             return self::FAILURE;
-        } catch (SignatureException $e) {
+        } catch (SignatureException | TokenException $e) {
             $output->writeln($e->getMessage()); // make an error
             return self::FAILURE;
         }
@@ -233,7 +238,16 @@ final class PublishCommand extends Command
 
     private function parseExtra(string $content): array
     {
-        // new one exception
+        echo $content;
+
+        // confirm? // если режим не интерактивный - то переписывать по умолчанию
+        // add?
+
+        // id=office-version-form
+        // id= office-package-form
+//        <input type="hidden" name="id" value="542">
+
+        // id=pdopage
 
     }
 
@@ -243,12 +257,50 @@ final class PublishCommand extends Command
         fwrite($tempFile, $content);
         $metatags = get_meta_tags(stream_get_meta_data($tempFile)['uri']);
 
-        // token exception
+        if (!array_key_exists('csrf-token', $metatags)) {
+            throw new TokenException('CSRF token not found, next operations impossible.');
+        }
+
         return $metatags['csrf-token'];
     }
 
     private function uploadExtraForm(): array
     {
+//        <select class="custom-select" name="minimum_supports">
+//        <option value="" selected="">Выберите из списка</option>
+//                    <option value="2.2">2.2</option>
+//                    <option value="2.3">2.3</option>
+//                    <option value="2.4">2.4</option>
+//                    <option value="2.5">2.5</option>
+//                    <option value="2.6">2.6</option>
+//                    <option value="2.7">2.7</option>
+//                    <option value="2.8" selected="">2.8</option>
+//                    <option value="3.0">3.0</option>
+//            </select>
+
+//        <select class="custom-select" name="supports">
+//        <option value="" selected="">Выберите из списка</option>
+//                    <option value="2.2">2.2</option>
+//                    <option value="2.3">2.3</option>
+//                    <option value="2.4">2.4</option>
+//                    <option value="2.5">2.5</option>
+//                    <option value="2.6">2.6</option>
+//                    <option value="2.7">2.7</option>
+//                    <option value="2.8" selected="">2.8</option>
+//                    <option value="3.0">3.0</option>
+//            </select>
+
+//        <select class="custom-select" name="minimum_php">
+//        <option value="" selected="">Выберите из списка</option>
+//                    <option value="5.3">5.3</option>
+//                    <option value="5.4">5.4</option>
+//                    <option value="5.5">5.5</option>
+//                    <option value="5.6">5.6</option>
+//                    <option value="7.0">7.0</option>
+//                    <option value="7.1">7.1</option>
+//                    <option value="7.2">7.2</option>
+//            </select>
+
         $form = [
             'action' => 'office/versions/create', // or update?
             'package_id' => 9,
