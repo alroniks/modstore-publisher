@@ -165,7 +165,8 @@ It is default command, so no need to define it, just run the following command t
 
 <info>bin/publisher</info>
 
-Read more at https://github.com/alroniks/modstore-publisher#readme
+Read more in <href=https://github.com/alroniks/modstore-publisher#readme>Documentation</>
+
 EOT
                 );
     }
@@ -265,6 +266,7 @@ EOT
 //            print_r(array_column($extra['versions'], 'active'));
 
             // todo: confirm publishing on the last step
+            // сводная таблица всех параметров - нужно брать из DTO
 
             // 07. Upload the compiled package
             $this->formatServiceAnswer(
@@ -287,7 +289,14 @@ EOT
 
         $io->title('MODX Extra Publisher');
         $io->block('This tool will help you publish your package on modstore.pro marketplace.');
-        $io->block('Follow the sections and answer the quesions to get it published.');
+        $io->block('Follow the questions and to answer them to get package published.');
+
+        if (!$input->getOption(self::OPTION_PACKAGE)) {
+            $io->section('Defining path to the package');
+            $io->text('Please, enter an valid path to file with compiled MODX package.');
+
+            $input->setOption(self::OPTION_PACKAGE, $io->ask('Path to the file with package archive'));
+        }
 
         if (!$input->getOption(self::OPTION_LOGIN) && !$input->getOption(self::OPTION_PASSWORD)) {
 
@@ -295,10 +304,7 @@ EOT
             $io->text('Please, enter login and password of your account on modstore.pro.');
 
             if (!$input->getOption(self::OPTION_LOGIN)) {
-                $login = $io->ask('Login'); // valid email validator?
-                // todo: get default value from git config? cache? composer?
-
-                $input->setOption(self::OPTION_LOGIN, $login);
+                $input->setOption(self::OPTION_LOGIN, $io->ask('Login'));
             }
 
             if (!$input->getOption(self::OPTION_PASSWORD)) {
@@ -306,8 +312,21 @@ EOT
             }
         }
 
-        $io->section('Configuring the version');
+        $io->section('Configuring the uploading version');
 
+        if (!$input->getOption(self::OPTION_CHANGELOG)) {
+            $input->setOption(self::OPTION_CHANGELOG, $io->ask('Path to the file with changelog on Russian'));
+        }
+
+        if (!$input->getOption(self::OPTION_CHANGELOG_ENGLISH)
+            && $io->confirm('Do you have different changelog for English language?', false)
+        ) {
+            $input->setOption(self::OPTION_CHANGELOG_ENGLISH, $io->ask('Path to file with changelog on English'));
+        }
+
+        if (!$input->getOption(self::OPTION_DEPRECATE)) {
+            $input->setOption(self::OPTION_DEPRECATE, $io->confirm('Disable all previous versions of a package?', true));
+        }
     }
 
     /**
