@@ -39,3 +39,9 @@ License
 - [ ] Write a post on blog about idea and usage cases
 - [ ] Make possible in interactive mode select extras from the list
 - [ ] Fill contribution document for people who want improove the tool
+- [ ] Split uploading and login to different service
+
+---
+
+- полностью рабочий пакет в no interactive mode
+- добавить проверки и выбор в интерактивном режиме согласно workflow

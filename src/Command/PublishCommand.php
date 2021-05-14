@@ -45,6 +45,14 @@ final class PublishCommand extends Command
     public const OPTION_CHANGELOG = 'changelog';
     public const OPTION_CHANGELOG_ENGLISH = 'changelog-english';
 
+    private const DESCRIPTIONS_MAP = [
+        self::ARGUMENT_PACKAGE => 'Path to the archive with compiled MODX package.',
+        self::OPTION_LOGIN => 'User name (email) for login on modstore.',
+        self::OPTION_PASSWORD => 'Password for login on modstore.',
+        self::OPTION_CHANGELOG => 'Path to the file with changelog entries.',
+        self::OPTION_CHANGELOG_ENGLISH => 'Alternative file for English variant in case, when original changelog on Russian. By default one file used for both cases.',
+    ];
+
     // todo: remove fields, it should be always parsed from filename and need add validation for it
     public const OPTION_PACKAGE = 'package';
     public const OPTION_RELEASE = 'release';
@@ -71,7 +79,6 @@ final class PublishCommand extends Command
     // supports
     // todo: parse lists with options from modstore, not hard defined
     private const MODX_VERSIONS_UNTIL = ['2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0'];
-    private const MODX_DEFAULT_MAX_VERSION = '2.8';
 
     // todo: parse lists with options from modstore
     private const PHP_VERSIONS = ['5.3', '5.4', '5.5', '5.6', '7.0', '7.1', '7.2'];
@@ -88,18 +95,21 @@ final class PublishCommand extends Command
             ->setDefinition(
                 [
                     new InputArgument(
-                        self::ARGUMENT_PACKAGE, InputArgument::REQUIRED,
-                        'Path to the archive with compiled MODX package.'
+                        self::ARGUMENT_PACKAGE,
+                        InputArgument::REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::ARGUMENT_PACKAGE]
                     ),
 
                     // credentials
                     new InputOption(
-                        self::OPTION_LOGIN, 'u', InputOption::VALUE_REQUIRED,
-                        'User name (email) for login on modstore.'
+                        self::OPTION_LOGIN, 'u',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_LOGIN]
                     ),
                     new InputOption(
-                        self::OPTION_PASSWORD, 'p', InputOption::VALUE_REQUIRED,
-                        'Password for login on modstore.'
+                        self::OPTION_PASSWORD, 'p',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_PASSWORD]
                     ),
 
                     // package
@@ -116,13 +126,14 @@ final class PublishCommand extends Command
 
                     // changelog
                     new InputOption(
-                        self::OPTION_CHANGELOG, null, InputOption::VALUE_REQUIRED,
-                        'Path to the file with changelog entries.'
+                        self::OPTION_CHANGELOG, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_CHANGELOG]
                     ),
                     new InputOption(
-                        self::OPTION_CHANGELOG_ENGLISH, null, InputOption::VALUE_REQUIRED,
-                        'Alternative file for English variant in case, when original changelog on Russian.
-                        By default one file used for both cases.'
+                        self::OPTION_CHANGELOG_ENGLISH, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_CHANGELOG_ENGLISH]
                     ),
 
                     // versions
@@ -198,8 +209,29 @@ EOT
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // todo: add validation of mandatory fields
+        $io = $this->getIO();
 
+        $options = array_filter($input->getOptions(), static fn ($option) => !empty($option));
+        $common = array_intersect( self::MANDATORY_OPTIONS, array_keys($options));
+
+        if (count($common) !== count(self::MANDATORY_OPTIONS)) {
+            $io->error('Required options are missed');
+            $io->block('To continue, define following options with values, please.');
+
+            $missed = array_chunk(
+                array_filter(
+                    self::DESCRIPTIONS_MAP,
+                    static fn($key) => in_array($key, array_diff(self::MANDATORY_OPTIONS, $common), true),
+                    ARRAY_FILTER_USE_KEY
+                ),
+                1,
+                true
+            );
+
+            $io->definitionList('Missed options:', ...$missed);
+
+            return self::FAILURE;
+        }
 
         try {
             // 01. Attempt to login
