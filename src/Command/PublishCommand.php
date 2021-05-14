@@ -9,25 +9,26 @@ declare(strict_types = 1);
 
 namespace Alroniks\Publisher\Command;
 
+use Alroniks\Publisher\ExtraException;
+use Alroniks\Publisher\PackageForm;
 use Alroniks\Publisher\SignatureException;
 use Alroniks\Publisher\TokenException;
+use DiDom\Document;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
+use JetBrains\PhpStorm\ArrayShape;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class PublishCommand extends Command
 {
-    protected const CLIENT_BASE_URI = 'https://modstore.pro/';
-    protected const CLIENT_ENTRY_POINT = 'assets/components/extras/action.php';
-
-    public const ARGUMENT_PACKAGE = 'package';
+    public const OPTION_PACKAGE = 'package';
 
     public const OPTION_LOGIN = 'login';
     public const OPTION_PASSWORD = 'password';
@@ -42,159 +43,290 @@ final class PublishCommand extends Command
     public const OPTION_CHANGELOG = 'changelog';
     public const OPTION_CHANGELOG_ENGLISH = 'changelog-english';
 
-    public const OPTION_PACKAGE = 'package';
-    public const OPTION_RELEASE = 'release';
+    private const DESCRIPTIONS_MAP = [
+        self::OPTION_PACKAGE => 'Path to the archive with compiled MODX package.',
+        self::OPTION_LOGIN => 'User name (email) for login on modstore.',
+        self::OPTION_PASSWORD => 'Password for login on modstore.',
+        self::OPTION_CHANGELOG => 'Path to the file with changelog entries.',
+        self::OPTION_CHANGELOG_ENGLISH => 'Alternative file for English variant in case, when original changelog on Russian. By default one file used for both cases.',
+        self::OPTION_REQUIRED_MODX_VERSION => 'Minimal version of MODX which required for running the package code.',
+        self::OPTION_REQUIRED_MODX_VERSION_MAX => "Up to what maximum version of MODX the package code is guaranteed to work.\n May be useful to limit packages, which are not compatible with MODX 3 yet.",
+        self::OPTION_REQUIRED_PHP_VERSION => 'Minimal version of PHP which required for running the package code.',
+        self::OPTION_DEPRECATE => "Disable all previous versions of the package.\n",
+        self::OPTION_OVERRIDE => "Override existing version by the new binary package.\n If the version does not exist, the flag will be ignored.\n",
+    ];
+
+    private const MANDATORY_OPTIONS = [
+        self::OPTION_PACKAGE,
+        self::OPTION_LOGIN,
+        self::OPTION_PASSWORD,
+        self::OPTION_CHANGELOG
+    ];
+
+    private const SUPPORTS_VERSION_DEFAULT_MODX = '2.8';
+    private const SUPPORTS_VERSION_DEFAULT_PHP = '7.2';
+
+    // move to connector service
+    private const CLIENT_BASE_URI = 'https://modstore.pro/';
+    private const CLIENT_ENTRY_POINT = 'assets/components/extras/action.php';
+
+    // todo: move to connector service
+    private const ACTION_CREATE = 'office/versions/create';
+    private const ACTION_UPDATE = 'office/versions/update';
+
+    // minimum_supports
+    // todo: parse lists with options from modstore, not hard defined
+    private const MODX_VERSIONS = ['2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0'];
+
+    // supports
+    // todo: parse lists with options from modstore, not hard defined
+    private const MODX_VERSIONS_UNTIL = ['2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0'];
+
+    // todo: parse lists with options from modstore
+    private const PHP_VERSIONS = ['5.3', '5.4', '5.5', '5.6', '7.0', '7.1', '7.2'];
 
     private Client $client;
+    private SymfonyStyle $io;
 
     protected function configure(): void
     {
         $this
             ->setName('publish')
-            ->setDescription('Sends new package version.')
+            ->setDescription('Publishes or updates the next package version to the marketplace.')
             ->setDefinition(
                 [
-                    new InputArgument(
-                        self::ARGUMENT_PACKAGE, InputArgument::REQUIRED,
-                        'Path to the archive with compiled MODX package.'
+                    // package
+                    new InputOption(
+                        self::OPTION_PACKAGE, 'e',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_PACKAGE]
                     ),
 
                     // credentials
                     new InputOption(
-                        self::OPTION_LOGIN, 'u', InputOption::VALUE_REQUIRED,
-                        'User name (email) for login on modstore.'
+                        self::OPTION_LOGIN, 'u',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_LOGIN]
                     ),
                     new InputOption(
-                        self::OPTION_PASSWORD, 'p', InputOption::VALUE_REQUIRED,
-                        'Password for login on modstore.'
-                    ),
-
-                    // package
-                    new InputOption(
-                        self::OPTION_PACKAGE, null, InputOption::VALUE_REQUIRED,
-                        'The name of the package. Usually, it is taken from the filename of the archive,
-                        but if defined, it will be used to fetch the package page.'
-                    ),
-                    new InputOption(
-                        self::OPTION_RELEASE, null, InputOption::VALUE_REQUIRED,
-                        'The version of the package to upload. Usually, it is taken from the filename of the archive,
-                        but if defined, it will override parsed value.'
+                        self::OPTION_PASSWORD, 'p',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_PASSWORD]
                     ),
 
                     // changelog
                     new InputOption(
-                        self::OPTION_CHANGELOG, null, InputOption::VALUE_REQUIRED,
-                        'Path to the file with changelog entries.'
+                        self::OPTION_CHANGELOG, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_CHANGELOG]
                     ),
                     new InputOption(
-                        self::OPTION_CHANGELOG_ENGLISH, null, InputOption::VALUE_REQUIRED,
-                        'Alternative file for English variant in case, when original changelog on russian.
-                        By default one file used for both cases.'
+                        self::OPTION_CHANGELOG_ENGLISH, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_CHANGELOG_ENGLISH]
                     ),
 
                     // versions
                     new InputOption(
-                        self::OPTION_REQUIRED_MODX_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of MODX which required for running the package code.',
-                        '2.8'
+                        self::OPTION_REQUIRED_MODX_VERSION, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_MODX_VERSION],
+                        self::SUPPORTS_VERSION_DEFAULT_MODX
                     ),
                     new InputOption(
-                        self::OPTION_REQUIRED_MODX_VERSION_MAX, null, InputOption::VALUE_REQUIRED,
-                        'Up to what maximum version of MODX the package code is guaranteed to work.
-                        May be useful to limit packages, which are not compatible with MODX 3.'
+                        self::OPTION_REQUIRED_MODX_VERSION_MAX, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_MODX_VERSION_MAX],
                     ),
                     new InputOption(
-                        self::OPTION_REQUIRED_PHP_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of PHP which required for running the package code.',
-                        '7.2'
+                        self::OPTION_REQUIRED_PHP_VERSION, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_PHP_VERSION],
+                        self::SUPPORTS_VERSION_DEFAULT_PHP
                     ),
 
                     // flags
                     new InputOption(
                         self::OPTION_DEPRECATE, 'd', InputOption::VALUE_NONE,
-                        'Disable all previous versions of the package.'
+                        self::DESCRIPTIONS_MAP[self::OPTION_DEPRECATE],
                     ),
                     new InputOption(
                         self::OPTION_OVERRIDE, 'r', InputOption::VALUE_NONE,
-                        'Override existing version by the new binary package.
-                        If the version does not exist, the flag will be ignored.'
+                        self::DESCRIPTIONS_MAP[self::OPTION_OVERRIDE],
                     ),
                 ]
             )
-            ->setHelp('Sends and publishes new version of the package to the repository.');
+            ->setHelp(
+                 <<<EOT
+The <info>publish</info> command connects to marketplace, analizes versions
+and publishes or updates the version of the package in the repository.
+
+It is default command, so no need to define it, just run the following command to get interactive mode.
+
+<info>bin/publisher</info>
+
+Read more in <href=https://github.com/alroniks/modstore-publisher#readme>Documentation</>
+
+EOT
+                );
+    }
+
+    public function initialize(InputInterface $input, OutputInterface $output): void
+    {
+        $this->io = new SymfonyStyle($input, $output);
+
+        $this->client = new Client([
+            'base_uri' => self::CLIENT_BASE_URI,
+            'cookies' => true
+        ]);
+
+        parent::initialize($input, $output);
+    }
+
+    public function getIO(): SymfonyStyle
+    {
+        return $this->io;
+    }
+
+    public function getClient(): Client
+    {
+        return $this->client;
     }
 
     /**
+     * @throws \Spatie\DataTransferObject\Exceptions\UnknownProperties
+     * @throws \DiDom\Exceptions\InvalidSelectorException
      * @throws \JsonException
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-//        $io = new SymfonyStyle($input, $output);
+        $io = $this->getIO();
 
-        $this->client = new Client(['base_uri' => self::CLIENT_BASE_URI, 'cookies' => true]);
+        $options = array_filter($input->getOptions(), static fn ($option) => !empty($option));
+        $common = array_intersect( self::MANDATORY_OPTIONS, array_keys($options));
+
+        if (count($common) !== count(self::MANDATORY_OPTIONS)) {
+            $io->error('Required options are missed');
+            $io->block('To continue, define following options with values, please.');
+
+            $missed = array_chunk(
+                array_filter(
+                    self::DESCRIPTIONS_MAP,
+                    static fn($key) => in_array($key, array_diff(self::MANDATORY_OPTIONS, $common), true),
+                    ARRAY_FILTER_USE_KEY
+                ),
+                1,
+                true
+            );
+
+            $io->definitionList('Missed options:', ...$missed);
+
+            return self::FAILURE;
+        }
 
         try {
             // 01. Attempt to login
-            $output->writeln($this->formatServiceAnswer(
-                $this->login($input->getOption(self::OPTION_LOGIN), $input->getOption(self::OPTION_PASSWORD))
-            ));
+            $this->formatServiceAnswer(
+                $this->login(
+                    $input->getOption(self::OPTION_LOGIN),
+                    $input->getOption(self::OPTION_PASSWORD)
+                )
+            );
 
             // 02. Parse archive name
-            [$package, $version] = $this->parsePackage($input->getArgument(self::ARGUMENT_PACKAGE));
+            [$package, $version] = $this->parsePackage($input->getOption(self::OPTION_PACKAGE));
 
-            // 03. Override parsed name and versions, if defined
-            $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
-            $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
-
-            // 04. Get the page of the package
-            $content = $this->client
+            // 03. Get the page of the package
+            $content = $this->getClient()
                 ->request('GET', sprintf('office/packages/%s', $package))
                 ->getBody()->getContents();
 
-            // 05. Get the CSRF token
+            // 04. Get the CSRF token
             $token = $this->parseToken($content);
 
-            // 06. Get meta information about extra
-            $extra = $this->parseExtra($content); // нужен только id + потом доступные версии для override
+            // 05. Get meta information about extra
+            $extra = $this->parseExtra($content);
+
+            //
+
+            exit(0);
+
+            // если версии совпадают и есть опция override, то нужно обновить
+            // если опции нет - то просто добавиь
+            // или спросить вопрос, перезаписать ли?
+
+//            $form = new PackageForm(
+//                action: self::ACTION_CREATE,
+//                package_id: $extra['id']
+//
+//            );
 
 
-            echo $token;
+//            print_r($extra);
+//            print_r(array_column($extra['versions'], 'active'));
 
-            // prepare form?
+            // todo: confirm publishing on the last step
+            // сводная таблица всех параметров - нужно брать из DTO
 
             // 07. Upload the compiled package
-//            $answer = $this->upload([], $token, true);
-
-//            $output->writeln($this->formatServiceAnswer($answer));
+            $this->formatServiceAnswer(
+                $this->upload($form, $token, true)
+            );
 
             return self::SUCCESS;
         } catch (GuzzleException $gex) {
-            $output->writeln($this->formatServiceAnswer($gex->getResponse()));
+            $this->formatServiceAnswer($gex->getResponse());
             return self::FAILURE;
-        } catch (SignatureException | TokenException $e) {
-            $output->writeln($e->getMessage()); // make an error
+        } catch (SignatureException | TokenException | ExtraException $e) {
+            $io->error($e->getMessage());
             return self::FAILURE;
         }
     }
 
     protected function interact(InputInterface $input, OutputInterface $output): void
     {
-        $helper = $this->getHelper('question');
+        $io = $this->getIO();
 
-        //min modx 2.2 -> 2.0, def - 2.8
+        $io->title('MODX Extra Publisher');
+        $io->block('This tool will help you publish your package on modstore.pro marketplace.');
+        $io->block('Follow the questions and to answer them to get package published.');
 
-//        $login = $input->getOption('login');
-//        $question = new Question('Login [<comment>' . $login . '</comment>]: ', $login);
-//        $login = $helper->ask($input, $output, $question);
-//        $input->setOption('login', $login);
+        if (!$input->getOption(self::OPTION_PACKAGE)) {
+            $io->section('Defining path to the package');
+            $io->text('Please, enter an valid path to file with compiled MODX package.');
 
-//        if (!$login = $input->getOption('login')) {
-//            $question = new Question('Login?');
-//
-//            $login = $helper->ask($input, $output, $question);
-//            $input->setOption('login', $login);
-//        }
+            $input->setOption(self::OPTION_PACKAGE, $io->ask('Path to the file with package archive'));
+        }
 
+        if (!$input->getOption(self::OPTION_LOGIN) && !$input->getOption(self::OPTION_PASSWORD)) {
+
+            $io->section('Signing in marketplace');
+            $io->text('Please, enter login and password of your account on modstore.pro.');
+
+            if (!$input->getOption(self::OPTION_LOGIN)) {
+                $input->setOption(self::OPTION_LOGIN, $io->ask('Login'));
+            }
+
+            if (!$input->getOption(self::OPTION_PASSWORD)) {
+                $input->setOption(self::OPTION_PASSWORD, $io->askHidden('Password'));
+            }
+        }
+
+        $io->section('Configuring the uploading version');
+
+        if (!$input->getOption(self::OPTION_CHANGELOG)) {
+            $input->setOption(self::OPTION_CHANGELOG, $io->ask('Path to the file with changelog on Russian'));
+        }
+
+        if (!$input->getOption(self::OPTION_CHANGELOG_ENGLISH)
+            && $io->confirm('Do you have different changelog for English language?', false)
+        ) {
+            $input->setOption(self::OPTION_CHANGELOG_ENGLISH, $io->ask('Path to file with changelog on English'));
+        }
+
+        if (!$input->getOption(self::OPTION_DEPRECATE)) {
+            $input->setOption(self::OPTION_DEPRECATE, $io->confirm('Disable all previous versions of a package?', true));
+        }
     }
 
     /**
@@ -202,7 +334,7 @@ final class PublishCommand extends Command
      */
     private function login(string $email, string $password): ResponseInterface
     {
-        return $this->client->request(
+        return $this->getClient()->request(
             'POST',
             self::CLIENT_ENTRY_POINT,
             [
@@ -236,23 +368,46 @@ final class PublishCommand extends Command
         return array_values(array_filter($matches, static fn($key) => in_array($key, [1, 2], true), ARRAY_FILTER_USE_KEY));
     }
 
+    /**
+     * @throws \DiDom\Exceptions\InvalidSelectorException
+     */
+    #[ArrayShape(['id' => "int", 'versions' => "array"])]
     private function parseExtra(string $content): array
     {
-        echo $content;
+        $document = new Document($content);
 
-        // confirm? // если режим не интерактивный - то переписывать по умолчанию
-        // add?
+        $input = $document->first('#office-package-form input[name="id"]');
 
-        // id=office-version-form
-        // id= office-package-form
-//        <input type="hidden" name="id" value="542">
+        if (!$input) {
+            throw new ExtraException('Element with extra ID is not found on the page.');
+        }
 
-        // id=pdopage
+        $versions = [];
+        foreach ($document->find('#pdopage tr.version') as $version) {
+            $cells = $version->find('td');
 
+            $href = $cells[4]->first('a.fa-edit')->getAttribute('href');
+            $segments = explode('/', $href);
+
+            $versions[] = [
+                'id' => (int) array_pop($segments),
+                'active' => !str_contains($version->getAttribute('class'), 'inactive'),
+                'version' => trim($cells[0]->text()),
+                'released' => trim($cells[1]->text()),
+                'downloads' => (int) trim($cells[2]->text()),
+                'updated' => trim($cells[3]->text())
+            ];
+        }
+
+        return [
+            'id' => (int) $input->getAttribute('value'),
+            'versions' => $versions
+        ];
     }
 
     private function parseToken(string $content): string
     {
+        // todo: replace by DiDom parser?
         $tempFile = tmpfile();
         fwrite($tempFile, $content);
         $metatags = get_meta_tags(stream_get_meta_data($tempFile)['uri']);
@@ -264,71 +419,13 @@ final class PublishCommand extends Command
         return $metatags['csrf-token'];
     }
 
-    private function uploadExtraForm(): array
-    {
-//        <select class="custom-select" name="minimum_supports">
-//        <option value="" selected="">Выберите из списка</option>
-//                    <option value="2.2">2.2</option>
-//                    <option value="2.3">2.3</option>
-//                    <option value="2.4">2.4</option>
-//                    <option value="2.5">2.5</option>
-//                    <option value="2.6">2.6</option>
-//                    <option value="2.7">2.7</option>
-//                    <option value="2.8" selected="">2.8</option>
-//                    <option value="3.0">3.0</option>
-//            </select>
-
-//        <select class="custom-select" name="supports">
-//        <option value="" selected="">Выберите из списка</option>
-//                    <option value="2.2">2.2</option>
-//                    <option value="2.3">2.3</option>
-//                    <option value="2.4">2.4</option>
-//                    <option value="2.5">2.5</option>
-//                    <option value="2.6">2.6</option>
-//                    <option value="2.7">2.7</option>
-//                    <option value="2.8" selected="">2.8</option>
-//                    <option value="3.0">3.0</option>
-//            </select>
-
-//        <select class="custom-select" name="minimum_php">
-//        <option value="" selected="">Выберите из списка</option>
-//                    <option value="5.3">5.3</option>
-//                    <option value="5.4">5.4</option>
-//                    <option value="5.5">5.5</option>
-//                    <option value="5.6">5.6</option>
-//                    <option value="7.0">7.0</option>
-//                    <option value="7.1">7.1</option>
-//                    <option value="7.2">7.2</option>
-//            </select>
-
-        $form = [
-            'action' => 'office/versions/create', // or update?
-            'package_id' => 9,
-            'changelog' => '',
-            'changelog_en' => '',
-            'minimum_supports' => '2.8',
-            'supports' => '',
-            'minimum_php' => '',
-            'deprecate_other' => '',
-            'package' => '' // psr stream // Psr7\Utils::tryFopen(__DIR__ . '/*.transport.zip', 'r')
-        ];
-
-        return [
-            [
-            'name'     => 'action',
-            'contents' => 'office/versions/create'
-        ],
-            ];
-
-    }
-
     /**
      * @throws \GuzzleHttp\Exception\GuzzleException
      */
-    private function upload(array $form, string $token, bool $debug = false): ResponseInterface
+    private function upload(PackageForm $form, string $token, bool $debug = false): ResponseInterface
     {
-        return $this->client->request('POST', self::CLIENT_ENTRY_POINT, [
-            'multipart' => $form,
+        return $this->getClient()->request('POST', self::CLIENT_ENTRY_POINT, [
+            'multipart' => $form->multipart(),
             'headers' => ['X-CSRF-Token' => $token],
             'debug' => $debug
         ]);
@@ -337,16 +434,17 @@ final class PublishCommand extends Command
     /**
      * @throws JsonException
      */
-    private function formatServiceAnswer(ResponseInterface $response): string
+    private function formatServiceAnswer(ResponseInterface $response): void
     {
-        $content = $response->getBody()->getContents();
-//        var_dump($content);
+        $io = $this->getIO();
 
-        $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
-
+        $decoded = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
         $success = (bool) ($decoded['success'] ?? false);
+        $message = (string) ($decoded['message'] ?? '');
 
-        return sprintf("<%s>\n%s\n</>", $success ? 'info' : 'error', $decoded['message'] ?? '');
+        $success ?
+            $io->success($message) :
+            $io->error($message);
     }
 }
 
