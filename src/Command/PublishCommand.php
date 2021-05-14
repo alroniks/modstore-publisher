@@ -50,10 +50,10 @@ final class PublishCommand extends Command
         self::OPTION_CHANGELOG => 'Path to the file with changelog entries.',
         self::OPTION_CHANGELOG_ENGLISH => 'Alternative file for English variant in case, when original changelog on Russian. By default one file used for both cases.',
         self::OPTION_REQUIRED_MODX_VERSION => 'Minimal version of MODX which required for running the package code.',
-        self::OPTION_REQUIRED_MODX_VERSION_MAX => 'Up to what maximum version of MODX the package code is guaranteed to work. May be useful to limit packages, which are not compatible with MODX 3 yet.',
+        self::OPTION_REQUIRED_MODX_VERSION_MAX => "Up to what maximum version of MODX the package code is guaranteed to work.\n May be useful to limit packages, which are not compatible with MODX 3 yet.",
         self::OPTION_REQUIRED_PHP_VERSION => 'Minimal version of PHP which required for running the package code.',
-        self::OPTION_DEPRECATE => 'Disable all previous versions of the package.',
-        self::OPTION_OVERRIDE => 'Override existing version by the new binary package. If the version does not exist, the flag will be ignored.',
+        self::OPTION_DEPRECATE => "Disable all previous versions of the package.\n",
+        self::OPTION_OVERRIDE => "Override existing version by the new binary package.\n If the version does not exist, the flag will be ignored.\n",
     ];
 
     private const MANDATORY_OPTIONS = [
@@ -225,9 +225,12 @@ EOT
 
         try {
             // 01. Attempt to login
-            $output->writeln($this->formatServiceAnswer(
-                $this->login($input->getOption(self::OPTION_LOGIN), $input->getOption(self::OPTION_PASSWORD))
-            ), OutputInterface::VERBOSITY_NORMAL);
+            $this->formatServiceAnswer(
+                $this->login(
+                    $input->getOption(self::OPTION_LOGIN),
+                    $input->getOption(self::OPTION_PASSWORD)
+                )
+            );
 
             // 02. Parse archive name
             [$package, $version] = $this->parsePackage($input->getOption(self::OPTION_PACKAGE));
@@ -242,6 +245,8 @@ EOT
 
             // 05. Get meta information about extra
             $extra = $this->parseExtra($content);
+
+            //
 
             exit(0);
 
@@ -262,16 +267,16 @@ EOT
             // todo: confirm publishing on the last step
 
             // 07. Upload the compiled package
-            $output->writeln($this->formatServiceAnswer(
+            $this->formatServiceAnswer(
                 $this->upload($form, $token, true)
-            ));
+            );
 
             return self::SUCCESS;
         } catch (GuzzleException $gex) {
-            $output->writeln($this->formatServiceAnswer($gex->getResponse())); // todo: replace by styles
+            $this->formatServiceAnswer($gex->getResponse());
             return self::FAILURE;
         } catch (SignatureException | TokenException | ExtraException $e) {
-            $output->writeln($e->getMessage()); // todo: make an error from styles
+            $io->error($e->getMessage());
             return self::FAILURE;
         }
     }
@@ -410,15 +415,17 @@ EOT
     /**
      * @throws JsonException
      */
-    private function formatServiceAnswer(ResponseInterface $response): string
+    private function formatServiceAnswer(ResponseInterface $response): void
     {
-        // replace by styles?
+        $io = $this->getIO();
 
-        $content = $response->getBody()->getContents();
-        $decoded = json_decode($content, true, 512, JSON_THROW_ON_ERROR);
+        $decoded = json_decode($response->getBody()->getContents(), true, 512, JSON_THROW_ON_ERROR);
         $success = (bool) ($decoded['success'] ?? false);
+        $message = (string) ($decoded['message'] ?? '');
 
-        return sprintf("<%s>\n%s\n</>", $success ? 'info' : 'error', $decoded['message'] ?? '');
+        $success ?
+            $io->success($message) :
+            $io->error($message);
     }
 }
 
