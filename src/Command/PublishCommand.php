@@ -29,8 +29,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class PublishCommand extends Command
 {
-    // todo: replace by option and make it mandatory
-    public const ARGUMENT_PACKAGE = 'package';
+    public const OPTION_PACKAGE = 'package';
 
     public const OPTION_LOGIN = 'login';
     public const OPTION_PASSWORD = 'password';
@@ -46,7 +45,7 @@ final class PublishCommand extends Command
     public const OPTION_CHANGELOG_ENGLISH = 'changelog-english';
 
     private const DESCRIPTIONS_MAP = [
-        self::ARGUMENT_PACKAGE => 'Path to the archive with compiled MODX package.',
+        self::OPTION_PACKAGE => 'Path to the archive with compiled MODX package.',
         self::OPTION_LOGIN => 'User name (email) for login on modstore.',
         self::OPTION_PASSWORD => 'Password for login on modstore.',
         self::OPTION_CHANGELOG => 'Path to the file with changelog entries.',
@@ -54,14 +53,14 @@ final class PublishCommand extends Command
     ];
 
     // todo: remove fields, it should be always parsed from filename and need add validation for it
-    public const OPTION_PACKAGE = 'package';
+//    public const OPTION_PACKAGE = 'package';
     public const OPTION_RELEASE = 'release';
 
     private const MANDATORY_OPTIONS = [
+        self::OPTION_PACKAGE,
         self::OPTION_LOGIN,
         self::OPTION_PASSWORD,
         self::OPTION_CHANGELOG
-        // package as well
     ];
 
     private const CLIENT_BASE_URI = 'https://modstore.pro/';
@@ -94,10 +93,10 @@ final class PublishCommand extends Command
             ->setDescription('Publishes or updates the next package version to the marketplace.')
             ->setDefinition(
                 [
-                    new InputArgument(
-                        self::ARGUMENT_PACKAGE,
-                        InputArgument::REQUIRED,
-                        self::DESCRIPTIONS_MAP[self::ARGUMENT_PACKAGE]
+                    new InputOption(
+                        self::OPTION_PACKAGE, 'e',
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_PACKAGE]
                     ),
 
                     // credentials
@@ -113,16 +112,16 @@ final class PublishCommand extends Command
                     ),
 
                     // package
-                    new InputOption(
-                        self::OPTION_PACKAGE, null, InputOption::VALUE_REQUIRED,
-                        'The name of the package. Usually, it is taken from the filename of the archive,
-                        but if defined, it will be used to fetch the package page.'
-                    ),
-                    new InputOption(
-                        self::OPTION_RELEASE, null, InputOption::VALUE_REQUIRED,
-                        'The version of the package to upload. Usually, it is taken from the filename of the archive,
-                        but if defined, it will override parsed value.'
-                    ),
+//                    new InputOption(
+//                        self::OPTION_PACKAGE, null, InputOption::VALUE_REQUIRED,
+//                        'The name of the package. Usually, it is taken from the filename of the archive,
+//                        but if defined, it will be used to fetch the package page.'
+//                    ),
+//                    new InputOption(
+//                        self::OPTION_RELEASE, null, InputOption::VALUE_REQUIRED,
+//                        'The version of the package to upload. Usually, it is taken from the filename of the archive,
+//                        but if defined, it will override parsed value.'
+//                    ),
 
                     // changelog
                     new InputOption(
@@ -240,12 +239,12 @@ EOT
             ), OutputInterface::VERBOSITY_NORMAL);
 
             // 02. Parse archive name
-            [$package, $version] = $this->parsePackage($input->getArgument(self::ARGUMENT_PACKAGE));
+            [$package, $version] = $this->parsePackage($input->getOption(self::OPTION_PACKAGE));
 
             // 03. Override parsed name and versions, if defined
             // todo: confirm such overriding
-            $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
-            $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
+//            $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
+//            $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
 
             // 04. Get the page of the package
             $content = $this->getClient()
