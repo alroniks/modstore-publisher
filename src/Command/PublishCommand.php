@@ -21,7 +21,6 @@ use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -50,11 +49,12 @@ final class PublishCommand extends Command
         self::OPTION_PASSWORD => 'Password for login on modstore.',
         self::OPTION_CHANGELOG => 'Path to the file with changelog entries.',
         self::OPTION_CHANGELOG_ENGLISH => 'Alternative file for English variant in case, when original changelog on Russian. By default one file used for both cases.',
+        self::OPTION_REQUIRED_MODX_VERSION => 'Minimal version of MODX which required for running the package code.',
+        self::OPTION_REQUIRED_MODX_VERSION_MAX => 'Up to what maximum version of MODX the package code is guaranteed to work. May be useful to limit packages, which are not compatible with MODX 3 yet.',
+        self::OPTION_REQUIRED_PHP_VERSION => 'Minimal version of PHP which required for running the package code.',
+        self::OPTION_DEPRECATE => 'Disable all previous versions of the package.',
+        self::OPTION_OVERRIDE => 'Override existing version by the new binary package. If the version does not exist, the flag will be ignored.',
     ];
-
-    // todo: remove fields, it should be always parsed from filename and need add validation for it
-//    public const OPTION_PACKAGE = 'package';
-    public const OPTION_RELEASE = 'release';
 
     private const MANDATORY_OPTIONS = [
         self::OPTION_PACKAGE,
@@ -63,17 +63,20 @@ final class PublishCommand extends Command
         self::OPTION_CHANGELOG
     ];
 
+    private const SUPPORTS_VERSION_DEFAULT_MODX = '2.8';
+    private const SUPPORTS_VERSION_DEFAULT_PHP = '7.2';
+
+    // move to connector service
     private const CLIENT_BASE_URI = 'https://modstore.pro/';
     private const CLIENT_ENTRY_POINT = 'assets/components/extras/action.php';
 
-    // todo: replace to
+    // todo: move to connector service
     private const ACTION_CREATE = 'office/versions/create';
     private const ACTION_UPDATE = 'office/versions/update';
 
     // minimum_supports
     // todo: parse lists with options from modstore, not hard defined
     private const MODX_VERSIONS = ['2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0'];
-    private const MODX_DEFAULT_VERSION = '2.8';
 
     // supports
     // todo: parse lists with options from modstore, not hard defined
@@ -81,7 +84,6 @@ final class PublishCommand extends Command
 
     // todo: parse lists with options from modstore
     private const PHP_VERSIONS = ['5.3', '5.4', '5.5', '5.6', '7.0', '7.1', '7.2'];
-    private const PHP_DEFAULT_VERSION = '7.2';
 
     private Client $client;
     private SymfonyStyle $io;
@@ -93,6 +95,7 @@ final class PublishCommand extends Command
             ->setDescription('Publishes or updates the next package version to the marketplace.')
             ->setDefinition(
                 [
+                    // package
                     new InputOption(
                         self::OPTION_PACKAGE, 'e',
                         InputOption::VALUE_REQUIRED,
@@ -111,18 +114,6 @@ final class PublishCommand extends Command
                         self::DESCRIPTIONS_MAP[self::OPTION_PASSWORD]
                     ),
 
-                    // package
-//                    new InputOption(
-//                        self::OPTION_PACKAGE, null, InputOption::VALUE_REQUIRED,
-//                        'The name of the package. Usually, it is taken from the filename of the archive,
-//                        but if defined, it will be used to fetch the package page.'
-//                    ),
-//                    new InputOption(
-//                        self::OPTION_RELEASE, null, InputOption::VALUE_REQUIRED,
-//                        'The version of the package to upload. Usually, it is taken from the filename of the archive,
-//                        but if defined, it will override parsed value.'
-//                    ),
-
                     // changelog
                     new InputOption(
                         self::OPTION_CHANGELOG, null,
@@ -137,30 +128,31 @@ final class PublishCommand extends Command
 
                     // versions
                     new InputOption(
-                        self::OPTION_REQUIRED_MODX_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of MODX which required for running the package code.',
-                        '2.8'
+                        self::OPTION_REQUIRED_MODX_VERSION, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_MODX_VERSION],
+                        self::SUPPORTS_VERSION_DEFAULT_MODX
                     ),
                     new InputOption(
-                        self::OPTION_REQUIRED_MODX_VERSION_MAX, null, InputOption::VALUE_REQUIRED,
-                        'Up to what maximum version of MODX the package code is guaranteed to work.
-                        May be useful to limit packages, which are not compatible with MODX 3 yet.'
+                        self::OPTION_REQUIRED_MODX_VERSION_MAX, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_MODX_VERSION_MAX],
                     ),
                     new InputOption(
-                        self::OPTION_REQUIRED_PHP_VERSION, null, InputOption::VALUE_REQUIRED,
-                        'Minimal version of PHP which required for running the package code.',
-                        '7.2'
+                        self::OPTION_REQUIRED_PHP_VERSION, null,
+                        InputOption::VALUE_REQUIRED,
+                        self::DESCRIPTIONS_MAP[self::OPTION_REQUIRED_PHP_VERSION],
+                        self::SUPPORTS_VERSION_DEFAULT_PHP
                     ),
 
                     // flags
                     new InputOption(
                         self::OPTION_DEPRECATE, 'd', InputOption::VALUE_NONE,
-                        'Disable all previous versions of the package.'
+                        self::DESCRIPTIONS_MAP[self::OPTION_DEPRECATE],
                     ),
                     new InputOption(
                         self::OPTION_OVERRIDE, 'r', InputOption::VALUE_NONE,
-                        'Override existing version by the new binary package.
-                        If the version does not exist, the flag will be ignored.'
+                        self::DESCRIPTIONS_MAP[self::OPTION_OVERRIDE],
                     ),
                 ]
             )
@@ -176,7 +168,6 @@ It is default command, so no need to define it, just run the following command t
 Read more at https://github.com/alroniks/modstore-publisher#readme
 EOT
                 );
-        // todo: replace link by static website with docs
     }
 
     public function initialize(InputInterface $input, OutputInterface $output): void
@@ -241,20 +232,15 @@ EOT
             // 02. Parse archive name
             [$package, $version] = $this->parsePackage($input->getOption(self::OPTION_PACKAGE));
 
-            // 03. Override parsed name and versions, if defined
-            // todo: confirm such overriding
-//            $package = $input->getOption(self::OPTION_PACKAGE) ?? $package;
-//            $version = $input->getOption(self::OPTION_RELEASE) ?? $version;
-
-            // 04. Get the page of the package
+            // 03. Get the page of the package
             $content = $this->getClient()
                 ->request('GET', sprintf('office/packages/%s', $package))
                 ->getBody()->getContents();
 
-            // 05. Get the CSRF token
+            // 04. Get the CSRF token
             $token = $this->parseToken($content);
 
-            // 06. Get meta information about extra
+            // 05. Get meta information about extra
             $extra = $this->parseExtra($content);
 
             exit(0);
