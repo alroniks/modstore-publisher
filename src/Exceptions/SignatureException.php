@@ -7,10 +7,10 @@
 
 declare(strict_types = 1);
 
-namespace Alroniks\Publisher;
+namespace Alroniks\Publisher\Exceptions;
 
 use RuntimeException;
 
-class ExtraException extends RuntimeException
+class SignatureException extends RuntimeException
 {
 }
