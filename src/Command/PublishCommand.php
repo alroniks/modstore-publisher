@@ -9,14 +9,13 @@ declare(strict_types = 1);
 
 namespace Alroniks\Publisher\Command;
 
+use Alroniks\Publisher\ContentParser;
 use Alroniks\Publisher\ExtraException;
 use Alroniks\Publisher\PackageForm;
 use Alroniks\Publisher\SignatureException;
 use Alroniks\Publisher\TokenException;
-use DiDom\Document;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
-use JetBrains\PhpStorm\ArrayShape;
 use JsonException;
 use Psr\Http\Message\ResponseInterface;
 use RuntimeException;
@@ -34,6 +33,7 @@ final class PublishCommand extends Command
     public const OPTION_PASSWORD = 'password';
 
     public const OPTION_DEPRECATE = 'deprecate';
+    public const OPTION_DISABLE = 'disable';
     public const OPTION_OVERRIDE = 'override';
 
     public const OPTION_REQUIRED_PHP_VERSION = 'php-version';
@@ -53,6 +53,7 @@ final class PublishCommand extends Command
         self::OPTION_REQUIRED_MODX_VERSION_MAX => "Up to what maximum version of MODX the package code is guaranteed to work.\n May be useful to limit packages, which are not compatible with MODX 3 yet.",
         self::OPTION_REQUIRED_PHP_VERSION => 'Minimal version of PHP which required for running the package code.',
         self::OPTION_DEPRECATE => "Disable all previous versions of the package.\n",
+        self::OPTION_DISABLE => "Disable existing version of the package\n",
         self::OPTION_OVERRIDE => "Override existing version by the new binary package.\n If the version does not exist, the flag will be ignored.\n",
     ];
 
@@ -74,7 +75,7 @@ final class PublishCommand extends Command
     private const ACTION_CREATE = 'office/versions/create';
     private const ACTION_UPDATE = 'office/versions/update';
 
-    // minimum_supports
+    // minimum_supports todo: move to parser
     // todo: parse lists with options from modstore, not hard defined
     private const MODX_VERSIONS = ['2.2', '2.3', '2.4', '2.5', '2.6', '2.7', '2.8', '3.0'];
 
@@ -86,7 +87,14 @@ final class PublishCommand extends Command
     private const PHP_VERSIONS = ['5.3', '5.4', '5.5', '5.6', '7.0', '7.1', '7.2'];
 
     private Client $client;
+    private \DriverInterface $driver;
     private SymfonyStyle $io;
+
+    public function __construct(string $name = null, \DriverInterface $driver) {
+        parent::__construct($name);
+
+        $this->driver = $driver;
+    }
 
     protected function configure(): void
     {
@@ -147,11 +155,18 @@ final class PublishCommand extends Command
 
                     // flags
                     new InputOption(
-                        self::OPTION_DEPRECATE, 'd', InputOption::VALUE_NONE,
+                        self::OPTION_DEPRECATE, 'd',
+                        InputOption::VALUE_NONE,
                         self::DESCRIPTIONS_MAP[self::OPTION_DEPRECATE],
                     ),
                     new InputOption(
-                        self::OPTION_OVERRIDE, 'r', InputOption::VALUE_NONE,
+                        self::OPTION_DISABLE, null,
+                        InputOption::VALUE_NONE,
+                        self::DESCRIPTIONS_MAP[self::OPTION_DISABLE],
+                    ),
+                    new InputOption(
+                        self::OPTION_OVERRIDE, 'r',
+                        InputOption::VALUE_NONE,
                         self::DESCRIPTIONS_MAP[self::OPTION_OVERRIDE],
                     ),
                 ]
@@ -174,6 +189,8 @@ EOT
     public function initialize(InputInterface $input, OutputInterface $output): void
     {
         $this->io = new SymfonyStyle($input, $output);
+
+        $this->driver = new \StoreDriver();
 
         $this->client = new Client([
             'base_uri' => self::CLIENT_BASE_URI,
@@ -224,6 +241,8 @@ EOT
             return self::FAILURE;
         }
 
+        $io->section('Processing uploading');
+
         try {
             // 01. Attempt to login
             $this->formatServiceAnswer(
@@ -236,20 +255,80 @@ EOT
             // 02. Parse archive name
             [$package, $version] = $this->parsePackage($input->getOption(self::OPTION_PACKAGE));
 
-            // 03. Get the page of the package
+            // 03. Get the page of the package todo: fetch
             $content = $this->getClient()
                 ->request('GET', sprintf('office/packages/%s', $package))
                 ->getBody()->getContents();
 
+            $parser = new ContentParser($content);
+
             // 04. Get the CSRF token
-            $token = $this->parseToken($content);
+            $token = $parser->token();
 
             // 05. Get meta information about extra
-            $extra = $this->parseExtra($content);
+            $extra = $parser->extra(); //
 
-            //
+            // versions modx, php etc. ?
+
+            if (in_array($version, array_column($extra['versions'], 'version'), true)) {
+                // version found, I will replace existing
+
+                $io->section('Existing versions');
+                $io->block('We found the next versions on the marketplace.');
+                $io->table(array_keys($extra['versions'][0]), $extra['versions']);
+
+                // updating form
+            } else {
+                $io->info(sprintf("Package with version `%s` is not published in the marketplace yet.\nNew version will be created and published.", $version));
+
+                if (!$input->getOption(self::OPTION_DEPRECATE)) {
+                    $input->setOption(self::OPTION_DEPRECATE, $io->confirm('Disable all previous versions of a package?', true));
+                }
+
+                $dto = new PackageForm(
+                    changelog: 'dgfdfg',
+                );
+                // creating form
+                // ask about versions? in case updatig, it can be fetched from form
+                // as well as changelog
+            }
+
+
+            // 1. Закончить с отправкой данных на сервис
+            // 2. Сделать класс DTO формы для отправки и обновления
+            // 3. Вынести функции отправки запросов в отдельный сервис
+            // 5. Проверить установку и работу в глобальном режиме
+            // 6. Добавить пакет на packagist
+            // 7. Вынести парссинг в отдельный класс
+
+            // basic form?
+
+            // creating form
+            // confirm?
+
+            // create form/
+            // update form/
+
+
+            var_dump($input->getOptions());
+            // just confirm adding
+
+
+            // какую версию обновить?
+            // депрекейтитть или нет?
+            // а если новая - то деперкейтить старые или нет?
+            // что делать в случае не интерактивного режима?
+            // -- если нашлась версия, то ее обновить, статус активности оставить как есть?
+
 
             exit(0);
+
+            // настроить/оставить по умолчанию/без ограничений
+
+            // спросить про версию modx, php и прочее
+            // в случае не интерактивного режима показать табличку все равно для отладки
+            //
+
 
             // если версии совпадают и есть опция override, то нужно обновить
             // если опции нет - то просто добавиь
@@ -258,9 +337,7 @@ EOT
 //            $form = new PackageForm(
 //                action: self::ACTION_CREATE,
 //                package_id: $extra['id']
-//
 //            );
-
 
 //            print_r($extra);
 //            print_r(array_column($extra['versions'], 'active'));
@@ -290,6 +367,7 @@ EOT
         $io->title('MODX Extra Publisher');
         $io->block('This tool will help you publish your package on modstore.pro marketplace.');
         $io->block('Follow the questions and to answer them to get package published.');
+        $io->note('If you have specified parameters for the command, then questions about them will be skipped.');
 
         if (!$input->getOption(self::OPTION_PACKAGE)) {
             $io->section('Defining path to the package');
@@ -323,10 +401,6 @@ EOT
         ) {
             $input->setOption(self::OPTION_CHANGELOG_ENGLISH, $io->ask('Path to file with changelog on English'));
         }
-
-        if (!$input->getOption(self::OPTION_DEPRECATE)) {
-            $input->setOption(self::OPTION_DEPRECATE, $io->confirm('Disable all previous versions of a package?', true));
-        }
     }
 
     /**
@@ -347,6 +421,7 @@ EOT
         );
     }
 
+    // todo: rename
     private function parsePackage(string $path): array
     {
         $data = pathinfo($path);
@@ -366,57 +441,6 @@ EOT
         }
 
         return array_values(array_filter($matches, static fn($key) => in_array($key, [1, 2], true), ARRAY_FILTER_USE_KEY));
-    }
-
-    /**
-     * @throws \DiDom\Exceptions\InvalidSelectorException
-     */
-    #[ArrayShape(['id' => "int", 'versions' => "array"])]
-    private function parseExtra(string $content): array
-    {
-        $document = new Document($content);
-
-        $input = $document->first('#office-package-form input[name="id"]');
-
-        if (!$input) {
-            throw new ExtraException('Element with extra ID is not found on the page.');
-        }
-
-        $versions = [];
-        foreach ($document->find('#pdopage tr.version') as $version) {
-            $cells = $version->find('td');
-
-            $href = $cells[4]->first('a.fa-edit')->getAttribute('href');
-            $segments = explode('/', $href);
-
-            $versions[] = [
-                'id' => (int) array_pop($segments),
-                'active' => !str_contains($version->getAttribute('class'), 'inactive'),
-                'version' => trim($cells[0]->text()),
-                'released' => trim($cells[1]->text()),
-                'downloads' => (int) trim($cells[2]->text()),
-                'updated' => trim($cells[3]->text())
-            ];
-        }
-
-        return [
-            'id' => (int) $input->getAttribute('value'),
-            'versions' => $versions
-        ];
-    }
-
-    private function parseToken(string $content): string
-    {
-        // todo: replace by DiDom parser?
-        $tempFile = tmpfile();
-        fwrite($tempFile, $content);
-        $metatags = get_meta_tags(stream_get_meta_data($tempFile)['uri']);
-
-        if (!array_key_exists('csrf-token', $metatags)) {
-            throw new TokenException('CSRF token not found, next operations impossible.');
-        }
-
-        return $metatags['csrf-token'];
     }
 
     /**

@@ -7,10 +7,11 @@
 
 declare(strict_types = 1);
 
-namespace Alroniks\Publisher;
+namespace Alroniks\Publisher\Package\Form;
 
-use RuntimeException;
+use Alroniks\Publisher\Package\AbstractForm;
 
-class TokenException extends RuntimeException
+final class Create extends AbstractForm
 {
+
 }
